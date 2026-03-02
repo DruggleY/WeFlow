@@ -27,6 +27,8 @@ interface SnsOverviewStats {
     latestTime: number | null
 }
 
+type OverviewStatsStatus = 'loading' | 'ready' | 'error'
+
 export default function SnsPage() {
     const [posts, setPosts] = useState<SnsPost[]>([])
     const [loading, setLoading] = useState(false)
@@ -38,7 +40,7 @@ export default function SnsPage() {
         earliestTime: null,
         latestTime: null
     })
-    const [overviewStatsLoading, setOverviewStatsLoading] = useState(false)
+    const [overviewStatsStatus, setOverviewStatsStatus] = useState<OverviewStatsStatus>('loading')
 
     // Filter states
     const [searchKeyword, setSearchKeyword] = useState('')
@@ -78,6 +80,7 @@ export default function SnsPage() {
     const [loadingNewer, setLoadingNewer] = useState(false)
     const postsRef = useRef<SnsPost[]>([])
     const overviewStatsRef = useRef<SnsOverviewStats>(overviewStats)
+    const overviewStatsStatusRef = useRef<OverviewStatsStatus>(overviewStatsStatus)
     const selectedUsernamesRef = useRef<string[]>(selectedUsernames)
     const searchKeywordRef = useRef(searchKeyword)
     const jumpTargetDateRef = useRef<Date | undefined>(jumpTargetDate)
@@ -92,6 +95,9 @@ export default function SnsPage() {
     useEffect(() => {
         overviewStatsRef.current = overviewStats
     }, [overviewStats])
+    useEffect(() => {
+        overviewStatsStatusRef.current = overviewStatsStatus
+    }, [overviewStatsStatus])
     useEffect(() => {
         selectedUsernamesRef.current = selectedUsernames
     }, [selectedUsernames])
@@ -141,14 +147,17 @@ export default function SnsPage() {
         try {
             const scopeKey = await ensureSnsCacheScopeKey()
             if (!scopeKey) return
+            const existingCache = await configService.getSnsPageCache(scopeKey)
             let postsToStore = patch?.posts ?? postsRef.current
             if (!patch?.posts && postsToStore.length === 0) {
-                const existingCache = await configService.getSnsPageCache(scopeKey)
                 if (existingCache && Array.isArray(existingCache.posts) && existingCache.posts.length > 0) {
                     postsToStore = existingCache.posts as SnsPost[]
                 }
             }
-            const overviewToStore = patch?.overviewStats ?? overviewStatsRef.current
+            const overviewToStore = patch?.overviewStats
+                ?? (overviewStatsStatusRef.current === 'ready'
+                    ? overviewStatsRef.current
+                    : existingCache?.overviewStats ?? overviewStatsRef.current)
             await configService.setSnsPageCache(scopeKey, {
                 overviewStats: overviewToStore,
                 posts: postsToStore.slice(0, SNS_PAGE_CACHE_POST_LIMIT)
@@ -167,12 +176,18 @@ export default function SnsPage() {
 
             const cachedOverview = cached.overviewStats
             if (cachedOverview) {
+                const cachedTotalPosts = Math.max(0, Number(cachedOverview.totalPosts || 0))
+                const cachedTotalFriends = Math.max(0, Number(cachedOverview.totalFriends || 0))
+                const hasCachedPosts = Array.isArray(cached.posts) && cached.posts.length > 0
+                const hasOverviewData = cachedTotalPosts > 0 || cachedTotalFriends > 0
                 setOverviewStats({
-                    totalPosts: Math.max(0, Number(cachedOverview.totalPosts || 0)),
-                    totalFriends: Math.max(0, Number(cachedOverview.totalFriends || 0)),
+                    totalPosts: cachedTotalPosts,
+                    totalFriends: cachedTotalFriends,
                     earliestTime: cachedOverview.earliestTime ?? null,
                     latestTime: cachedOverview.latestTime ?? null
                 })
+                // 只有明确有统计值（或确实无帖子）时才把缓存视为 ready，避免历史异常 0 卡住显示。
+                setOverviewStatsStatus(hasOverviewData || !hasCachedPosts ? 'ready' : 'loading')
             }
 
             if (Array.isArray(cached.posts) && cached.posts.length > 0) {
@@ -197,7 +212,7 @@ export default function SnsPage() {
     }, [ensureSnsCacheScopeKey])
 
     const loadOverviewStats = useCallback(async () => {
-        setOverviewStatsLoading(true)
+        setOverviewStatsStatus('loading')
         try {
             const statsResult = await window.electronAPI.sns.getExportStats()
             if (!statsResult.success || !statsResult.data) {
@@ -232,13 +247,27 @@ export default function SnsPage() {
                 latestTime
             }
             setOverviewStats(nextOverviewStats)
+            setOverviewStatsStatus('ready')
             void persistSnsPageCache({ overviewStats: nextOverviewStats })
         } catch (error) {
             console.error('Failed to load SNS overview stats:', error)
-        } finally {
-            setOverviewStatsLoading(false)
+            setOverviewStatsStatus('error')
         }
     }, [persistSnsPageCache])
+
+    const renderOverviewStats = () => {
+        if (overviewStatsStatus === 'error') {
+            return (
+                <button type="button" className="feed-stats-retry" onClick={() => { void loadOverviewStats() }}>
+                    统计失败，点击重试
+                </button>
+            )
+        }
+        if (overviewStatsStatus === 'loading') {
+            return '统计中...'
+        }
+        return `共 ${overviewStats.totalPosts} 条 ｜ ${formatDateOnly(overviewStats.earliestTime)} ~ ${formatDateOnly(overviewStats.latestTime)} ｜ ${overviewStats.totalFriends} 位好友`
+    }
 
     const loadPosts = useCallback(async (options: { reset?: boolean, direction?: 'older' | 'newer' } = {}) => {
         const { reset = false, direction = 'older' } = options
@@ -513,8 +542,8 @@ export default function SnsPage() {
                     <div className="feed-header">
                         <div className="feed-header-main">
                             <h2>朋友圈</h2>
-                            <div className={`feed-stats-line ${overviewStatsLoading ? 'loading' : ''}`}>
-                                共 {overviewStats.totalPosts} 条 ｜ {formatDateOnly(overviewStats.earliestTime)} ~ {formatDateOnly(overviewStats.latestTime)} ｜ {overviewStats.totalFriends} 位好友
+                            <div className={`feed-stats-line ${overviewStatsStatus}`}>
+                                {renderOverviewStats()}
                             </div>
                         </div>
                         <div className="header-actions">

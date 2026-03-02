@@ -497,6 +497,8 @@ class SnsService {
             }
 
             let { totalPosts, totalFriends } = await this.getExportStatsFromTableCount()
+            let fallbackAttempted = false
+            let fallbackError = ''
 
             // 某些环境下 SnsTimeLine 统计查询会返回 0，这里在允许时回退到与导出同源的 timeline 接口统计。
             if (
@@ -504,23 +506,52 @@ class SnsService {
                 (totalPosts <= 0 || totalFriends <= 0) &&
                 now - this.lastTimelineFallbackAt >= this.timelineFallbackCooldownMs
             ) {
-                this.lastTimelineFallbackAt = now
-                const timelineStats = await this.getExportStatsFromTimeline()
-                if (timelineStats.totalPosts > 0) {
-                    totalPosts = timelineStats.totalPosts
+                fallbackAttempted = true
+                try {
+                    const timelineStats = await this.getExportStatsFromTimeline()
+                    this.lastTimelineFallbackAt = Date.now()
+                    if (timelineStats.totalPosts > 0) {
+                        totalPosts = timelineStats.totalPosts
+                    }
+                    if (timelineStats.totalFriends > 0) {
+                        totalFriends = timelineStats.totalFriends
+                    }
+                } catch (error) {
+                    fallbackError = String(error)
+                    console.error('[SnsService] getExportStats timeline fallback failed:', error)
                 }
-                if (timelineStats.totalFriends > 0) {
-                    totalFriends = timelineStats.totalFriends
+            }
+
+            const normalizedStats = {
+                totalPosts: Math.max(0, Number(totalPosts || 0)),
+                totalFriends: Math.max(0, Number(totalFriends || 0))
+            }
+            const computedHasData = normalizedStats.totalPosts > 0 || normalizedStats.totalFriends > 0
+            const cacheHasData = !!this.exportStatsCache && (this.exportStatsCache.totalPosts > 0 || this.exportStatsCache.totalFriends > 0)
+
+            // 计算结果全 0 时，优先使用已有非零缓存，避免瞬时异常覆盖有效统计。
+            if (!computedHasData && cacheHasData && this.exportStatsCache) {
+                return {
+                    success: true,
+                    data: {
+                        totalPosts: this.exportStatsCache.totalPosts,
+                        totalFriends: this.exportStatsCache.totalFriends
+                    }
                 }
+            }
+
+            // 当主查询结果全 0 且回退统计执行失败时，返回失败给前端显示明确状态（而非错误地展示 0）。
+            if (!computedHasData && fallbackAttempted && fallbackError) {
+                return { success: false, error: fallbackError }
             }
 
             this.exportStatsCache = {
-                totalPosts,
-                totalFriends,
+                totalPosts: normalizedStats.totalPosts,
+                totalFriends: normalizedStats.totalFriends,
                 updatedAt: Date.now()
             }
 
-            return { success: true, data: { totalPosts, totalFriends } }
+            return { success: true, data: normalizedStats }
         } catch (e) {
             if (this.exportStatsCache) {
                 return {

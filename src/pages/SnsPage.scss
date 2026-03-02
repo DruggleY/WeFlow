@@ -74,6 +74,22 @@
         &.loading {
             opacity: 0.7;
         }
+
+        &.error {
+            color: #d94f45;
+        }
+    }
+
+    .feed-stats-retry {
+        border: none;
+        background: transparent;
+        color: inherit;
+        font-size: 13px;
+        padding: 0;
+        line-height: 1.4;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 2px;
     }
 
     .header-actions {
