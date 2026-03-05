@@ -881,15 +881,15 @@ class SnsService {
             `SELECT COUNT(1) AS total FROM SnsTimeLine WHERE user_name = '${escapedUsername}'`
         )
 
-        if (primaryResult.success) {
-            const totalPosts = primaryResult.rows && primaryResult.rows.length > 0
-                ? this.parseCountValue(primaryResult.rows[0])
-                : 0
+        const primaryTotal = (primaryResult.success && primaryResult.rows && primaryResult.rows.length > 0)
+            ? this.parseCountValue(primaryResult.rows[0])
+            : 0
+        if (primaryResult.success && primaryTotal > 0) {
             return {
                 success: true,
                 data: {
                     username: normalizedUsername,
-                    totalPosts
+                    totalPosts: primaryTotal
                 }
             }
         }
@@ -901,14 +901,24 @@ class SnsService {
         )
 
         if (fallbackResult.success) {
-            const totalPosts = fallbackResult.rows && fallbackResult.rows.length > 0
+            const fallbackTotal = fallbackResult.rows && fallbackResult.rows.length > 0
                 ? this.parseCountValue(fallbackResult.rows[0])
                 : 0
             return {
                 success: true,
                 data: {
                     username: normalizedUsername,
-                    totalPosts
+                    totalPosts: Math.max(primaryTotal, fallbackTotal)
+                }
+            }
+        }
+
+        if (primaryResult.success) {
+            return {
+                success: true,
+                data: {
+                    username: normalizedUsername,
+                    totalPosts: primaryTotal
                 }
             }
         }
