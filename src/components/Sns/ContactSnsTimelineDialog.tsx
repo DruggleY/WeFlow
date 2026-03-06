@@ -26,6 +26,8 @@ interface ContactSnsTimelineDialogProps {
   onClose: () => void
   initialTotalPosts?: number | null
   initialTotalPostsLoading?: boolean
+  isProtected?: boolean
+  onDeletePost?: (postId: string, username: string) => void
 }
 
 const normalizeTotalPosts = (value?: number | null): number | null => {
@@ -90,7 +92,9 @@ export function ContactSnsTimelineDialog({
   target,
   onClose,
   initialTotalPosts = null,
-  initialTotalPostsLoading = false
+  initialTotalPostsLoading = false,
+  isProtected = false,
+  onDeletePost
 }: ContactSnsTimelineDialogProps) {
   const [timelinePosts, setTimelinePosts] = useState<SnsPost[]>([])
   const [timelineLoading, setTimelineLoading] = useState(false)
@@ -536,7 +540,7 @@ export function ContactSnsTimelineDialog({
               {timelinePosts.map((post) => (
                 <SnsPostItem
                   key={post.id}
-                  post={post}
+                  post={{ ...post, isProtected }}
                   onPreview={(src, isVideo, liveVideoPath) => {
                     if (isVideo) {
                       void window.electronAPI.window.openVideoPlayerWindow(src)
@@ -545,6 +549,7 @@ export function ContactSnsTimelineDialog({
                     }
                   }}
                   onDebug={() => {}}
+                  onDelete={onDeletePost}
                   hideAuthorMeta
                 />
               ))}

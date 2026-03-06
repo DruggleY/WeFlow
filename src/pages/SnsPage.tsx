@@ -5,7 +5,8 @@ import './SnsPage.scss'
 import { SnsPost } from '../types/sns'
 import { SnsPostItem } from '../components/Sns/SnsPostItem'
 import { SnsFilterPanel } from '../components/Sns/SnsFilterPanel'
-import { Avatar } from '../components/Avatar'
+import { ContactSnsTimelineDialog } from '../components/Sns/ContactSnsTimelineDialog'
+import type { ContactSnsTimelineTarget } from '../components/Sns/contactSnsTimeline'
 import * as configService from '../services/config'
 
 const SNS_PAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
@@ -42,12 +43,6 @@ interface SnsOverviewStats {
 
 type OverviewStatsStatus = 'loading' | 'ready' | 'error'
 
-interface AuthorTimelineTarget {
-    username: string
-    nickname: string
-    avatarUrl?: string
-}
-
 export default function SnsPage() {
     const [posts, setPosts] = useState<SnsPost[]>([])
     const [loading, setLoading] = useState(false)
@@ -80,13 +75,7 @@ export default function SnsPage() {
     // UI states
     const [showJumpDialog, setShowJumpDialog] = useState(false)
     const [debugPost, setDebugPost] = useState<SnsPost | null>(null)
-    const [authorTimelineTarget, setAuthorTimelineTarget] = useState<AuthorTimelineTarget | null>(null)
-    const [authorTimelinePosts, setAuthorTimelinePosts] = useState<SnsPost[]>([])
-    const [authorTimelineLoading, setAuthorTimelineLoading] = useState(false)
-    const [authorTimelineLoadingMore, setAuthorTimelineLoadingMore] = useState(false)
-    const [authorTimelineHasMore, setAuthorTimelineHasMore] = useState(false)
-    const [authorTimelineTotalPosts, setAuthorTimelineTotalPosts] = useState<number | null>(null)
-    const [authorTimelineStatsLoading, setAuthorTimelineStatsLoading] = useState(false)
+    const [authorTimelineTarget, setAuthorTimelineTarget] = useState<ContactSnsTimelineTarget | null>(null)
 
     // 导出相关状态
     const [showExportDialog, setShowExportDialog] = useState(false)
@@ -125,10 +114,6 @@ export default function SnsPage() {
     const contactsLoadTokenRef = useRef(0)
     const contactsCountHydrationTokenRef = useRef(0)
     const contactsCountBatchTimerRef = useRef<number | null>(null)
-    const authorTimelinePostsRef = useRef<SnsPost[]>([])
-    const authorTimelineLoadingRef = useRef(false)
-    const authorTimelineRequestTokenRef = useRef(0)
-    const authorTimelineStatsTokenRef = useRef(0)
 
     // Sync posts ref
     useEffect(() => {
@@ -152,9 +137,6 @@ export default function SnsPage() {
     useEffect(() => {
         jumpTargetDateRef.current = jumpTargetDate
     }, [jumpTargetDate])
-    useEffect(() => {
-        authorTimelinePostsRef.current = authorTimelinePosts
-    }, [authorTimelinePosts])
     // 在 DOM 更新后、浏览器绘制前同步调整滚动位置，防止向上加载时页面跳动
     useLayoutEffect(() => {
         const snapshot = scrollAdjustmentRef.current;
@@ -760,137 +742,16 @@ export default function SnsPage() {
     }, [ensureSnsUserPostCountsCacheScopeKey, hydrateContactPostCounts, sortContactsForRanking, stopContactsCountHydration])
 
     const closeAuthorTimeline = useCallback(() => {
-        authorTimelineRequestTokenRef.current += 1
-        authorTimelineStatsTokenRef.current += 1
-        authorTimelineLoadingRef.current = false
         setAuthorTimelineTarget(null)
-        setAuthorTimelinePosts([])
-        setAuthorTimelineLoading(false)
-        setAuthorTimelineLoadingMore(false)
-        setAuthorTimelineHasMore(false)
-        setAuthorTimelineTotalPosts(null)
-        setAuthorTimelineStatsLoading(false)
-    }, [])
-
-    const loadAuthorTimelineTotalPosts = useCallback(async (target: AuthorTimelineTarget) => {
-        const requestToken = ++authorTimelineStatsTokenRef.current
-        setAuthorTimelineStatsLoading(true)
-        setAuthorTimelineTotalPosts(null)
-
-        try {
-            const result = await window.electronAPI.sns.getUserPostCounts()
-            if (requestToken !== authorTimelineStatsTokenRef.current) return
-
-            if (result.success && result.counts) {
-                const totalPosts = result.counts[target.username] ?? 0
-                setAuthorTimelineTotalPosts(Math.max(0, Number(totalPosts || 0)))
-            } else {
-                setAuthorTimelineTotalPosts(null)
-            }
-        } catch (error) {
-            console.error('Failed to load author timeline total posts:', error)
-            if (requestToken === authorTimelineStatsTokenRef.current) {
-                setAuthorTimelineTotalPosts(null)
-            }
-        } finally {
-            if (requestToken === authorTimelineStatsTokenRef.current) {
-                setAuthorTimelineStatsLoading(false)
-            }
-        }
-    }, [])
-
-    const loadAuthorTimelinePosts = useCallback(async (target: AuthorTimelineTarget, options: { reset?: boolean } = {}) => {
-        const { reset = false } = options
-        if (authorTimelineLoadingRef.current) return
-
-        authorTimelineLoadingRef.current = true
-        if (reset) {
-            setAuthorTimelineLoading(true)
-            setAuthorTimelineLoadingMore(false)
-            setAuthorTimelineHasMore(false)
-        } else {
-            setAuthorTimelineLoadingMore(true)
-        }
-
-        const requestToken = ++authorTimelineRequestTokenRef.current
-
-        try {
-            const limit = 20
-            let endTs: number | undefined = undefined
-
-            if (!reset && authorTimelinePostsRef.current.length > 0) {
-                endTs = authorTimelinePostsRef.current[authorTimelinePostsRef.current.length - 1].createTime - 1
-            }
-
-            const result = await window.electronAPI.sns.getTimeline(
-                limit,
-                0,
-                [target.username],
-                '',
-                undefined,
-                endTs
-            )
-
-            if (requestToken !== authorTimelineRequestTokenRef.current) return
-            if (!result.success || !result.timeline) {
-                if (reset) {
-                    setAuthorTimelinePosts([])
-                    setAuthorTimelineHasMore(false)
-                }
-                return
-            }
-
-            if (reset) {
-                const sorted = [...result.timeline].sort((a, b) => b.createTime - a.createTime)
-                setAuthorTimelinePosts(sorted)
-                setAuthorTimelineHasMore(result.timeline.length >= limit)
-                return
-            }
-
-            const existingIds = new Set(authorTimelinePostsRef.current.map((p) => p.id))
-            const uniqueOlder = result.timeline.filter((p) => !existingIds.has(p.id))
-            if (uniqueOlder.length > 0) {
-                const merged = [...authorTimelinePostsRef.current, ...uniqueOlder].sort((a, b) => b.createTime - a.createTime)
-                setAuthorTimelinePosts(merged)
-            }
-            if (result.timeline.length < limit) {
-                setAuthorTimelineHasMore(false)
-            }
-        } catch (error) {
-            console.error('Failed to load author timeline:', error)
-            if (requestToken === authorTimelineRequestTokenRef.current && reset) {
-                setAuthorTimelinePosts([])
-                setAuthorTimelineHasMore(false)
-            }
-        } finally {
-            if (requestToken === authorTimelineRequestTokenRef.current) {
-                authorTimelineLoadingRef.current = false
-                setAuthorTimelineLoading(false)
-                setAuthorTimelineLoadingMore(false)
-            }
-        }
     }, [])
 
     const openAuthorTimeline = useCallback((post: SnsPost) => {
-        authorTimelineRequestTokenRef.current += 1
-        authorTimelineLoadingRef.current = false
-        const target = {
+        setAuthorTimelineTarget({
             username: post.username,
-            nickname: post.nickname,
+            displayName: decodeHtmlEntities(post.nickname || '') || post.username,
             avatarUrl: post.avatarUrl
-        }
-        setAuthorTimelineTarget(target)
-        setAuthorTimelinePosts([])
-        setAuthorTimelineHasMore(false)
-        setAuthorTimelineTotalPosts(null)
-        void loadAuthorTimelinePosts(target, { reset: true })
-        void loadAuthorTimelineTotalPosts(target)
-    }, [loadAuthorTimelinePosts, loadAuthorTimelineTotalPosts])
-
-    const loadMoreAuthorTimeline = useCallback(() => {
-        if (!authorTimelineTarget || authorTimelineLoading || authorTimelineLoadingMore || !authorTimelineHasMore) return
-        void loadAuthorTimelinePosts(authorTimelineTarget, { reset: false })
-    }, [authorTimelineHasMore, authorTimelineLoading, authorTimelineLoadingMore, authorTimelineTarget, loadAuthorTimelinePosts])
+        })
+    }, [decodeHtmlEntities])
 
     const handlePostDelete = useCallback((postId: string, username: string) => {
         setPosts(prev => {
@@ -898,12 +759,8 @@ export default function SnsPage() {
             void persistSnsPageCache({ posts: next })
             return next
         })
-        setAuthorTimelinePosts(prev => prev.filter(p => p.id !== postId))
-        if (authorTimelineTarget && authorTimelineTarget.username === username) {
-            setAuthorTimelineTotalPosts(prev => prev === null ? null : Math.max(0, prev - 1))
-        }
         void loadOverviewStats()
-    }, [authorTimelineTarget, loadOverviewStats, persistSnsPageCache])
+    }, [loadOverviewStats, persistSnsPageCache])
 
     // Initial Load & Listeners
     useEffect(() => {
@@ -947,24 +804,6 @@ export default function SnsPage() {
         return () => clearTimeout(timer)
     }, [selectedUsernames, searchKeyword, jumpTargetDate, loadPosts])
 
-    useEffect(() => {
-        if (!authorTimelineTarget) return
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                closeAuthorTimeline()
-            }
-        }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [authorTimelineTarget, closeAuthorTimeline])
-
-    useEffect(() => {
-        if (authorTimelineTotalPosts === null) return
-        if (authorTimelinePosts.length >= authorTimelineTotalPosts) {
-            setAuthorTimelineHasMore(false)
-        }
-    }, [authorTimelinePosts.length, authorTimelineTotalPosts])
-
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const { scrollTop, clientHeight, scrollHeight } = e.currentTarget
         if (scrollHeight - scrollTop - clientHeight < 400 && hasMore && !loading && !loadingNewer) {
@@ -981,29 +820,6 @@ export default function SnsPage() {
         if (e.deltaY < -20 && container.scrollTop <= 0 && hasNewer && !loading && !loadingNewer) {
             loadPosts({ direction: 'newer' })
         }
-    }
-
-    const handleAuthorTimelineScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        const { scrollTop, clientHeight, scrollHeight } = e.currentTarget
-        if (scrollHeight - scrollTop - clientHeight < 260) {
-            loadMoreAuthorTimeline()
-        }
-    }
-
-    const renderAuthorTimelineStats = () => {
-        const loadedCount = authorTimelinePosts.length
-        const loadPart = authorTimelineStatsLoading
-            ? `已加载 ${loadedCount} / 总数统计中...`
-            : authorTimelineTotalPosts === null
-                ? `已加载 ${loadedCount} 条`
-                : `已加载 ${loadedCount} / 共 ${authorTimelineTotalPosts} 条`
-
-        if (authorTimelineLoading && loadedCount === 0) return `${loadPart} ｜ 加载中...`
-        if (loadedCount === 0) return loadPart
-
-        const latest = authorTimelinePosts[0]?.createTime ?? null
-        const earliest = authorTimelinePosts[authorTimelinePosts.length - 1]?.createTime ?? null
-        return `${loadPart} ｜ ${formatDateOnly(earliest)} ~ ${formatDateOnly(latest)}`
     }
 
     return (
@@ -1166,76 +982,12 @@ export default function SnsPage() {
                 currentDate={jumpTargetDate || new Date()}
             />
 
-            {authorTimelineTarget && (
-                <div className="modal-overlay" onClick={closeAuthorTimeline}>
-                    <div className="author-timeline-dialog" onClick={(e) => e.stopPropagation()}>
-                        <div className="author-timeline-header">
-                            <div className="author-timeline-meta">
-                                <Avatar
-                                    src={authorTimelineTarget.avatarUrl}
-                                    name={authorTimelineTarget.nickname}
-                                    size={42}
-                                    shape="rounded"
-                                />
-                                <div className="author-timeline-meta-text">
-                                    <h3>{decodeHtmlEntities(authorTimelineTarget.nickname)}</h3>
-                                    <div className="author-timeline-username">@{authorTimelineTarget.username}</div>
-                                    <div className="author-timeline-stats">{renderAuthorTimelineStats()}</div>
-                                </div>
-                            </div>
-                            <button className="close-btn" onClick={closeAuthorTimeline}>
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="author-timeline-body" onScroll={handleAuthorTimelineScroll}>
-                            {authorTimelinePosts.length > 0 && (
-                                <div className="posts-list author-timeline-posts-list">
-                                    {authorTimelinePosts.map(post => (
-                                        <SnsPostItem
-                                            key={post.id}
-                                            post={{ ...post, isProtected: triggerInstalled === true }}
-                                            onPreview={(src, isVideo, liveVideoPath) => {
-                                                if (isVideo) {
-                                                    void window.electronAPI.window.openVideoPlayerWindow(src)
-                                                } else {
-                                                    void window.electronAPI.window.openImageViewerWindow(src, liveVideoPath || undefined)
-                                                }
-                                            }}
-                                            onDebug={(p) => setDebugPost(p)}
-                                            onDelete={handlePostDelete}
-                                            onOpenAuthorPosts={openAuthorTimeline}
-                                            hideAuthorMeta
-                                        />
-                                    ))}
-                                </div>
-                            )}
-
-                            {authorTimelineLoading && (
-                                <div className="status-indicator loading-more author-timeline-loading">
-                                    <RefreshCw size={16} className="spinning" />
-                                    <span>正在加载该用户朋友圈...</span>
-                                </div>
-                            )}
-
-                            {!authorTimelineLoading && authorTimelinePosts.length === 0 && (
-                                <div className="author-timeline-empty">该用户暂无朋友圈</div>
-                            )}
-
-                            {!authorTimelineLoading && authorTimelineHasMore && (
-                                <button
-                                    type="button"
-                                    className="author-timeline-load-more"
-                                    onClick={loadMoreAuthorTimeline}
-                                    disabled={authorTimelineLoadingMore}
-                                >
-                                    {authorTimelineLoadingMore ? '正在加载...' : '加载更多'}
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ContactSnsTimelineDialog
+                target={authorTimelineTarget}
+                onClose={closeAuthorTimeline}
+                isProtected={triggerInstalled === true}
+                onDeletePost={handlePostDelete}
+            />
 
             {debugPost && (
                 <div className="modal-overlay" onClick={() => setDebugPost(null)}>
