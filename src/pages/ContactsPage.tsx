@@ -18,7 +18,7 @@ const AVATAR_ENRICH_BATCH_SIZE = 80
 const SEARCH_DEBOUNCE_MS = 120
 const VIRTUAL_ROW_HEIGHT = 76
 const VIRTUAL_OVERSCAN = 10
-const DEFAULT_CONTACTS_LOAD_TIMEOUT_MS = 3000
+const DEFAULT_CONTACTS_LOAD_TIMEOUT_MS = 10000
 const AVATAR_RECHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 interface ContactsLoadSession {
@@ -400,6 +400,7 @@ function ContactsPage() {
                         alias: contact.alias,
                         labels: contact.labels,
                         detailDescription: contact.detailDescription,
+                        region: contact.region,
                         type: contact.type
                     }))
                 ).catch((error) => {
@@ -1114,8 +1115,15 @@ function ContactsPage() {
                             <div className="detail-row"><span className="detail-label">昵称</span><span className="detail-value">{selectedContact.nickname || selectedContact.displayName}</span></div>
                             {selectedContact.remark && <div className="detail-row"><span className="detail-label">备注</span><span className="detail-value">{selectedContact.remark}</span></div>}
                             {selectedContact.alias && <div className="detail-row"><span className="detail-label">微信号</span><span className="detail-value">{selectedContact.alias}</span></div>}
-                            {selectedContact.labels && selectedContact.labels.length > 0 && <div className="detail-row"><span className="detail-label">标签</span><span className="detail-value">{selectedContact.labels.join('、')}</span></div>}
-                            {selectedContact.detailDescription && <div className="detail-row"><span className="detail-label">详细描述</span><span className="detail-value">{selectedContact.detailDescription}</span></div>}
+                            {selectedContact.labels && selectedContact.labels.length > 0 && (
+                                <div className="detail-row"><span className="detail-label">标签</span><span className="detail-value">{selectedContact.labels.join('、')}</span></div>
+                            )}
+                            {selectedContact.detailDescription && (
+                                <div className="detail-row"><span className="detail-label">个性签名</span><span className="detail-value">{selectedContact.detailDescription}</span></div>
+                            )}
+                            {selectedContact.region && (
+                                <div className="detail-row"><span className="detail-label">地区</span><span className="detail-value">{selectedContact.region}</span></div>
+                            )}
                             <div className="detail-row"><span className="detail-label">类型</span><span className="detail-value">{getContactTypeName(selectedContact.type)}</span></div>
                             {selectedContactSupportsSns && (
                                 <div className="detail-row">

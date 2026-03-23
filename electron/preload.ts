@@ -225,7 +225,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('chat:voiceTranscriptPartial', listener)
       return () => ipcRenderer.removeListener('chat:voiceTranscriptPartial', listener)
     },
-    getContacts: () => ipcRenderer.invoke('chat:getContacts'),
+    getContacts: (options?: { lite?: boolean }) => ipcRenderer.invoke('chat:getContacts', options),
     getMessage: (sessionId: string, localId: number) =>
       ipcRenderer.invoke('chat:getMessage', sessionId, localId),
     searchMessages: (keyword: string, sessionId?: string, limit?: number, offset?: number, beginTimestamp?: number, endTimestamp?: number) =>

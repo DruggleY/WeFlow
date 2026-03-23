@@ -1545,8 +1545,8 @@ function registerIpcHandlers() {
     return await chatService.resolveTransferDisplayNames(chatroomId, payerUsername, receiverUsername)
   })
 
-  ipcMain.handle('chat:getContacts', async () => {
-    return await chatService.getContacts()
+  ipcMain.handle('chat:getContacts', async (_, options?: { lite?: boolean }) => {
+    return await chatService.getContacts(options)
   })
 
   ipcMain.handle('chat:getCachedMessages', async (_, sessionId: string) => {

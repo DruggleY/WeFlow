@@ -665,6 +665,7 @@ export interface ContactsListCacheContact {
   alias?: string
   labels?: string[]
   detailDescription?: string
+  region?: string
   type: 'friend' | 'group' | 'official' | 'former_friend' | 'other'
 }
 
@@ -1139,16 +1140,18 @@ export async function setSnsPageCache(
 export async function getContactsLoadTimeoutMs(): Promise<number> {
   const value = await config.get(CONFIG_KEYS.CONTACTS_LOAD_TIMEOUT_MS)
   if (typeof value === 'number' && Number.isFinite(value) && value >= 1000 && value <= 60000) {
-    return Math.floor(value)
+    const normalized = Math.floor(value)
+    // 兼容历史默认值 3000ms：自动提升到新的更稳妥阈值。
+    return normalized === 3000 ? 10000 : normalized
   }
-  return 3000
+  return 10000
 }
 
 // 设置通讯录加载超时阈值（毫秒）
 export async function setContactsLoadTimeoutMs(timeoutMs: number): Promise<void> {
   const normalized = Number.isFinite(timeoutMs)
     ? Math.min(60000, Math.max(1000, Math.floor(timeoutMs)))
-    : 3000
+    : 10000
   await config.set(CONFIG_KEYS.CONTACTS_LOAD_TIMEOUT_MS, normalized)
 }
 
@@ -1181,7 +1184,8 @@ export async function getContactsListCache(scopeKey: string): Promise<ContactsLi
       labels: Array.isArray(item.labels)
         ? Array.from(new Set(item.labels.map((label) => String(label || '').trim()).filter(Boolean)))
         : undefined,
-      detailDescription: typeof item.detailDescription === 'string' ? item.detailDescription : undefined,
+      detailDescription: typeof item.detailDescription === 'string' ? (item.detailDescription.trim() || undefined) : undefined,
+      region: typeof item.region === 'string' ? (item.region.trim() || undefined) : undefined,
       type: (type === 'friend' || type === 'group' || type === 'official' || type === 'former_friend' || type === 'other')
         ? type
         : 'other'
@@ -1219,7 +1223,8 @@ export async function setContactsListCache(scopeKey: string, contacts: ContactsL
       labels: Array.isArray(contact?.labels)
         ? Array.from(new Set(contact.labels.map((label) => String(label || '').trim()).filter(Boolean)))
         : undefined,
-      detailDescription: contact?.detailDescription ? String(contact.detailDescription) : undefined,
+      detailDescription: contact?.detailDescription ? (String(contact.detailDescription).trim() || undefined) : undefined,
+      region: contact?.region ? (String(contact.region).trim() || undefined) : undefined,
       type
     })
   }

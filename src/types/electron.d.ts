@@ -219,7 +219,7 @@ export interface ElectronAPI {
     updateMessage: (sessionId: string, localId: number, createTime: number, newContent: string) => Promise<{ success: boolean; error?: string }>
     deleteMessage: (sessionId: string, localId: number, createTime: number, dbPathHint?: string) => Promise<{ success: boolean; error?: string }>
     resolveTransferDisplayNames: (chatroomId: string, payerUsername: string, receiverUsername: string) => Promise<{ payerName: string; receiverName: string }>
-    getContacts: () => Promise<{
+    getContacts: (options?: { lite?: boolean }) => Promise<{
       success: boolean
       contacts?: ContactInfo[]
       error?: string
