@@ -1531,7 +1531,9 @@ class GroupAnalyticsService {
       try {
         while (true) {
           const batch = await wcdbService.fetchMessageBatch(cursor)
-          if (!batch.success) break
+          if (!batch.success) {
+            return { success: false, error: batch.error || '获取分析数据失败' }
+          }
           const rows = Array.isArray(batch.rows) ? batch.rows as Record<string, any>[] : []
           if (rows.length === 0) break
 

@@ -168,6 +168,7 @@ function GroupAnalyticsPage() {
   const [isExportingMemberMessages, setIsExportingMemberMessages] = useState(false)
   const [memberMessages, setMemberMessages] = useState<Message[]>([])
   const [memberAnalyticsData, setMemberAnalyticsData] = useState<any | null>(null)
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null)
   const [memberMessagesHasMore, setMemberMessagesHasMore] = useState(false)
   const [memberMessagesCursor, setMemberMessagesCursor] = useState(0)
   const [memberMessagesLoadingMore, setMemberMessagesLoadingMore] = useState(false)
@@ -570,6 +571,7 @@ function GroupAnalyticsPage() {
         }
         case 'memberAnalytics': {
           setMemberAnalyticsData(null)
+          setAnalyticsError(null)
           updateBackgroundTask(taskId, {
             detail: '正在读取成员列表与消息分析',
             progressText: '成员分析'
@@ -611,6 +613,7 @@ function GroupAnalyticsPage() {
               progressText: '已完成'
             })
           } else {
+            setAnalyticsError(analyticsResult.error || '分析失败')
             finishBackgroundTask(taskId, 'failed', { detail: analyticsResult.error || '分析失败' })
           }
           break
@@ -1434,7 +1437,9 @@ function GroupAnalyticsPage() {
                           )}
                         </div>
                       </div>
-                      {memberAnalyticsData ? (
+                      {analyticsError ? (
+                        <div className="member-message-empty">{analyticsError}</div>
+                      ) : memberAnalyticsData ? (
                         <div className="analytics-content-scrollable" style={{ padding: '0', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto' }}>
                           <div className="stats-overview">
                             <div className="stat-card">
